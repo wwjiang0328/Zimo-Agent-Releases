@@ -1,58 +1,24 @@
-# Asteria Agent Desktop
+# Zimo Agent Releases
 
-**Asteria Agent** 是一款本地优先的桌面 Agent（桌面智能体），运行在 Windows 和 macOS 上。它可以理解项目上下文，读取和编辑本地文件，调用命令与工具，并把多步骤任务推进到可验证的交付结果。
+Zimo Local（织梦本地版）和 Zimo Cloud（织梦云端版）的官方公开安装包仓库。
 
-官网：<https://asteria.jackcloud.online>
+官网与下载入口：<https://www.zimofy.com/download>。
 
-## 下载桌面版
+| 产品 | 标签 | 安装包 |
+|---|---|---|
+| Zimo Local | `local-vX.Y.Z` | `Zimo-Local-win-X.Y.Z.exe` / `Zimo-Local-mac-X.Y.Z.dmg` |
+| Zimo Cloud | `cloud-vX.Y.Z` | `Zimo-Cloud-win-X.Y.Z.exe` / `Zimo-Cloud-mac-X.Y.Z.dmg` |
 
-从 [Releases](https://github.com/wwjiang0328/Asteria-Agent-Desktop/releases) 下载最新安装包：
+Windows 为 x86_64，macOS 为 Apple Silicon。两个产品独立更新；请通过官网选择对应产品，不使用全仓库 latest 判断版本。
 
-- Windows：`Asteria-win-<version>.exe`
-- macOS Apple Silicon：`Asteria-mac-<version>.dmg`
+历史标签及安装包保留，原仓库链接由 GitHub 重定向。本仓库不包含应用源码和生产凭据，不因公开安装包而改变产品许可。
 
-## Asteria Agent 是什么？
+## 构建约定
 
-Asteria Agent 是面向真实工作场景的桌面 AI Agent。与只提供文本回答的聊天工具不同，它在个人电脑上连接项目文件、历史会话、模型服务和本机工具，能够执行操作、检查结果，并保留可以继续使用的工作成果。
+源码分别位于私有仓库 `Zimo-Agent-Local` 与 `Zimo-Agent-Cloud`。先在对应源码提交上创建产品标签，再在本仓库 main 上创建同名标签。构建凭据 `GH_PAT` 必须能读取对应私有源码仓库。
 
-核心能力包括：
+Local 的签名、COS 上传与线上发布由私有发布控制器完成。Cloud 的线上发布配置需要单独验收，不得套用 Local 的数据库发布作用域。产品名称变化不代表 Cloud 的功能、安装器及数据隔离已经完成发布验收。
 
-- 本地项目上下文与连续会话
-- 文件读写、命令执行和工具调用
-- OpenAI 兼容接口、Anthropic、OpenRouter 与 Ollama
-- 可编辑文件生成与结果验证
-- Windows 和 macOS 桌面应用体验
+当前暂停打包发布。历史取消的 v2.0.6 标签保留，新命名的标签不得复用旧构建产物。
 
-## English
-
-**Asteria Agent** is a local-first desktop AI agent for Windows and macOS. It understands project context, works with local files, calls computer tools, and moves multi-step tasks toward verifiable deliverables.
-
-Website: <https://asteria.jackcloud.online>
-
-Download the latest Windows and macOS installers from [GitHub Releases](https://github.com/wwjiang0328/Asteria-Agent-Desktop/releases).
-
-### What is Asteria Agent?
-
-Asteria Agent is a desktop agent for real work, not only a chat interface. It connects project files, conversation history, model providers, and local tools so it can perform actions, check results, and leave editable artifacts that you can continue using.
-
-Key capabilities:
-
-- Local project context and persistent conversations
-- File operations, command execution, and tool use
-- OpenAI-compatible APIs, Anthropic, OpenRouter, and Ollama
-- Editable artifact generation and verification
-- Native desktop distribution for Windows and macOS
-
-## Official distribution
-
-本仓库只公开官方安装包、版本信息和构建发布流程。Asteria Agent 的应用源码为闭源专有代码，不在本仓库中提供。
-
-This is the official public distribution repository for Asteria Agent desktop installers. It contains release workflows, version information, and downloadable Windows/macOS packages only. The Asteria Agent application source code is proprietary and is not included in this repository.
-
-- Official website and documentation: [asteria.jackcloud.online](https://asteria.jackcloud.online)
-- Public product information: [Asteria Hub](https://github.com/wwjiang0328/Asteria-Hub)
-- Release installers: this repository's [Releases](https://github.com/wwjiang0328/Asteria-Agent-Desktop/releases)
-
-## License and usage
-
-The desktop installers and other release assets are distributed for use under the terms provided by Asteria. This public repository does not grant access to the proprietary application source code.
+Application source is private. This repository distributes official installers and release workflows only.
