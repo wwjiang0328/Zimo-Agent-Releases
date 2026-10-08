@@ -19,6 +19,8 @@ Windows 为 x86_64，macOS 为 Apple Silicon。两个产品独立更新；请通
 
 Local 的签名、COS 上传与线上发布由私有发布控制器完成。Cloud 的线上发布配置需要单独验收，不得套用 Local 的数据库发布作用域。产品名称变化不代表 Cloud 的功能、安装器及数据隔离已经完成发布验收。
 
-当前暂停打包发布。历史取消的 v2.0.6 标签保留，新命名的标签不得复用旧构建产物。
+2026-10-08 恢复 Local / Cloud 2.1.0 构建发布。历史取消的 v2.0.6 标签保留，新命名的标签不得复用旧构建产物。
+
+`Installer acceptance` 工作流仅在 GitHub 临时 Windows/macOS runner 中运行，验证正式安装包摘要、Local 2.0.5 升级、两个产品共存、卸载隔离及数据保留；不得在用户电脑运行该测试脚本。两款安装包就绪后，以同一版本手动触发此验证，通过后再将对应版本推广到官网和在线更新。
 
 Application source is private. This repository distributes official installers and release workflows only.
