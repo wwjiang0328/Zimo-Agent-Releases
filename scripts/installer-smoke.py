@@ -155,12 +155,15 @@ def main():
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted', 'Must run in disposable GitHub-hosted runner')
     version = os.environ['RELEASE_VERSION']
     require(re.fullmatch(r'\d+\.\d+\.\d+', version), 'Invalid release version')
+    revision = os.environ.get('BUILD_REVISION', '1')
+    require(re.fullmatch(r'[1-9][0-9]*', revision), 'Invalid build revision')
+    tag_suffix = '-build.' + revision if int(revision) > 1 else ''
     root = Path(tempfile.mkdtemp(prefix='zimo-installer-qa-', dir=os.environ['RUNNER_TEMP']))
     suffix = 'win-' + version + '.exe' if platform.system() == 'Windows' else 'mac-' + version + '.dmg'
     old_name = 'Zimo-win-2.0.5.exe' if platform.system() == 'Windows' else 'Zimo-mac-2.0.5.dmg'
     old = download('v2.0.5', old_name, root)
-    local = download('local-v' + version, 'Zimo-Local-' + suffix, root)
-    cloud = download('cloud-v' + version, 'Zimo-Cloud-' + suffix, root)
+    local = download('local-v' + version + tag_suffix, 'Zimo-Local-' + suffix, root)
+    cloud = download('cloud-v' + version + tag_suffix, 'Zimo-Cloud-' + suffix, root)
     print('PASS: all installer SHA256 digests match GitHub assets', flush=True)
     if platform.system() == 'Windows':
         windows(root, old, local, cloud)
