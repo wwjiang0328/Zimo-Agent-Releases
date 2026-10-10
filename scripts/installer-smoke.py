@@ -27,7 +27,8 @@ def digest(path):
 
 def download(tag, name, destination):
     repo = os.environ['GITHUB_REPOSITORY']
-    raw = run(['gh', 'api', f'repos/{repo}/releases/tags/{tag}'], capture_output=True, text=True)
+    # GitHub JSON is UTF-8, independent of the Windows runner's code page.
+    raw = run(['gh', 'api', f'repos/{repo}/releases/tags/{tag}'], capture_output=True, text=True, encoding='utf-8')
     assets = json.loads(raw.stdout)['assets']
     matches = [asset for asset in assets if asset['name'] == name]
     require(len(matches) == 1, f'Missing exact asset: {name}')
