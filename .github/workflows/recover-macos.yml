@@ -1,0 +1,121 @@
+name: Recover missing macOS installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing immutable product tag (no asset replacement)
+        required: true
+      source_sha:
+        description: Exact 40-character source commit already tested
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: recover-macos-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: macos-14
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: pipeline
+          persist-credentials: false
+
+      - name: Validate existing release and missing asset
+        id: product
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$RELEASE_TAG" =~ ^(local|cloud)-v([0-9]+\.[0-9]+\.[0-9]+)(-build\.([2-9]|[1-9][0-9]+))?$ ]]; then
+            PRODUCT="${BASH_REMATCH[1]}"
+            VERSION="${BASH_REMATCH[2]}"
+          else
+            echo 'Invalid immutable product tag' >&2
+            exit 1
+          fi
+          if [ "$PRODUCT" = local ]; then EDITION=Local; else EDITION=Cloud; fi
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets > release.json
+          ASSET="Zimo-${EDITION}-mac-${VERSION}.dmg"
+          jq -e --arg name "$ASSET" '[.assets[] | select(.name == $name)] | length == 0' release.json
+          jq -e --arg name "Zimo-${EDITION}-win-${VERSION}.exe" '[.assets[] | select(.name == $name)] | length == 1' release.json
+          echo "edition=$EDITION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          repository: wwjiang0328/Zimo-Agent-${{ steps.product.outputs.edition }}
+          ref: refs/tags/${{ inputs.release_tag }}
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
+          path: source
+
+      - name: Verify exact source
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: test "$(git -C source rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Prepare source resources
+        working-directory: source
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.product.outputs.version }}
+        run: |
+          set -euo pipefail
+          npm install --include=optional
+          node scripts/install-platform-bindings.mjs
+          node scripts/version-consistency.cjs "v${RELEASE_VERSION}"
+          npm run sync-skills
+          npm run sync-agent-browser
+
+      - name: Build signed application bundle
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run tauri build -- --bundles app --verbose 2>&1 | tee "$RUNNER_TEMP/macos-app-build.log"
+
+      - name: Package and verify recovery disk image
+        working-directory: source
+        shell: bash
+        env:
+          EDITION: ${{ steps.product.outputs.edition }}
+          VERSION: ${{ steps.product.outputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: bash ../pipeline/scripts/package-macos-recovery.sh
+
+      - name: Upload missing asset without overwriting any existing installer
+        working-directory: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: gh release upload "$RELEASE_TAG" release_artifacts/*.dmg --repo "$GITHUB_REPOSITORY"
+
+      - name: Preserve build and package evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-recovery-evidence
+          path: |
+            ${{ runner.temp }}/macos-app-build.log
+            source/release_artifacts/*.txt
+          if-no-files-found: warn
