@@ -92,6 +92,28 @@ jobs:
           set -euo pipefail
           npm run tauri build -- --bundles app --verbose 2>&1 | tee "$RUNNER_TEMP/macos-app-build.log"
 
+      - name: Preserve successfully built application before DMG packaging
+        working-directory: source
+        shell: bash
+        env:
+          EDITION: ${{ steps.product.outputs.edition }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/macos-signed-app.tar.gz" -C src-tauri/target/release/bundle/macos "Zimo ${EDITION}.app"
+          printf 'source_sha=%s\nrelease_tag=%s\n' "$SOURCE_SHA" "$RELEASE_TAG" > "$RUNNER_TEMP/macos-signed-app.txt"
+          shasum -a 256 "$RUNNER_TEMP/macos-signed-app.tar.gz" >> "$RUNNER_TEMP/macos-signed-app.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-signed-app
+          path: |
+            ${{ runner.temp }}/macos-signed-app.tar.gz
+            ${{ runner.temp }}/macos-signed-app.txt
+          compression-level: 0
+          if-no-files-found: error
+
       - name: Package and verify recovery disk image
         working-directory: source
         shell: bash

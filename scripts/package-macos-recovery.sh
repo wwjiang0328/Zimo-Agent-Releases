@@ -18,7 +18,7 @@ test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = "$id
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" = "$VERSION"
 codesign --verify --deep --strict --verbose=2 "$app"
 binary="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")"
-lipo -verify_arch arm64 "$app/Contents/MacOS/$binary"
+lipo "$app/Contents/MacOS/$binary" -verify_arch arm64
 stage="$(mktemp -d "$RUNNER_TEMP/zimo-dmg-XXXXXX")"
 ditto "$app" "$stage/Zimo ${EDITION}.app"
 ln -s /Applications "$stage/Applications"
