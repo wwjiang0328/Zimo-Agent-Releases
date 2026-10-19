@@ -23,4 +23,10 @@ Local 的签名、COS 上传与线上发布由私有发布控制器完成。Clou
 
 `Installer acceptance` 工作流仅在 GitHub 临时 Windows/macOS runner 中运行，验证正式安装包摘要、Local 2.0.5 升级、两个产品共存、卸载隔离及数据保留；不得在用户电脑运行该测试脚本。两款安装包就绪后，以同一版本手动触发此验证，通过后再将对应版本推广到官网和在线更新。
 
+### 恢复缺失的 macOS 安装包
+
+当已有 Windows 安装包、macOS 编译通过但 DMG 包装失败时，可运行 `Recover missing macOS installer`，传入原产品标签和已测试的完整源码 SHA。工作流不改标签，不覆盖任何现有资产，只补齐缺失的 DMG。
+
+恢复流程由 Tauri 构建并签名 `.app`，校验产品标识、版本、arm64 和签名后，使用 macOS `hdiutil` 生成包含应用与 Applications 链接的标准磁盘映像，跳过原 DMG 外观包装脚本。构建日志及源码/工作流/文件摘要记录保留为 Actions artifact。恢复完成仍须通过 `Installer acceptance`，再由发布控制器校验、签名、上传和验证公开下载；生成 GitHub 资产不代表已切换自动更新。
+
 Application source is private. This repository distributes official installers and release workflows only.
