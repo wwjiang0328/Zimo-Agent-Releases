@@ -4,8 +4,9 @@ import json
 import os
 from pathlib import Path
 import socket
+import subprocess
 import time
-from urllib.request import urlopen
+from urllib.request import build_opener, ProxyHandler
 
 import websocket
 
@@ -22,6 +23,7 @@ class PackagedUI:
         self.connection = None
         self.sequence = 0
         self.exceptions = []
+        self.http = build_opener(ProxyHandler({}))
 
     def environment(self) -> dict[str, str]:
         return {**os.environ, 'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS':
@@ -34,7 +36,7 @@ class PackagedUI:
             if process.poll() is not None:
                 raise RuntimeError(f'{self.label} exited before UI became ready')
             try:
-                with urlopen(f'http://127.0.0.1:{self.port}/json/list', timeout=2) as response:
+                with self.http.open(f'http://127.0.0.1:{self.port}/json/list', timeout=2) as response:
                     targets = json.load(response)
                 last_observation = repr([(target.get('type'), target.get('url')) for target in targets])[:1000]
                 matches = [target for target in targets if target.get('type') == 'page'
@@ -49,6 +51,12 @@ class PackagedUI:
             except (OSError, ValueError, websocket.WebSocketException) as error:
                 last_observation = f'{type(error).__name__}: {error}'[:1000]
             time.sleep(0.25)
+        ports = subprocess.run(['netstat', '-ano'], capture_output=True, text=True, timeout=15)
+        print('\n'.join(line for line in ports.stdout.splitlines() if f':{self.port} ' in line), flush=True)
+        processes = subprocess.run(['powershell', '-NoProfile', '-Command',
+            "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress"],
+            capture_output=True, text=True, timeout=15)
+        print('CI WebView process diagnostics: ' + processes.stdout[:10000], flush=True)
         raise RuntimeError(f'{self.label} packaged WebView endpoint was not ready: {last_observation}')
 
     def call(self, method: str, params=None):
