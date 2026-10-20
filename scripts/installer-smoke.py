@@ -54,6 +54,7 @@ def assert_sentinel(path):
 def live_processes(executables):
     processes = []
     probes = []
+    output_files = []
     try:
         for index, executable in enumerate(executables):
             environment = os.environ.copy()
@@ -65,7 +66,10 @@ def live_processes(executables):
                 probe = module.PackagedUI(('Local', 'Cloud')[index])
                 probes.append(probe)
                 environment = probe.environment()
-            processes.append(subprocess.Popen([str(executable)], env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            output_path = Path(os.environ['RUNNER_TEMP']) / f'zimo-installed-{index}.log'
+            output = output_path.open('wb')
+            output_files.append((output, output_path))
+            processes.append(subprocess.Popen([str(executable)], env=environment, stdout=output, stderr=subprocess.STDOUT))
         for probe, process in zip(probes, processes):
             probe.connect(process)
             try:
@@ -88,6 +92,9 @@ def live_processes(executables):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait(timeout=10)
+        for output, output_path in output_files:
+            output.close()
+            print(output_path.read_text(encoding='utf-8', errors='replace')[-4000:], flush=True)
 
 
 def windows(root, old, local, cloud):

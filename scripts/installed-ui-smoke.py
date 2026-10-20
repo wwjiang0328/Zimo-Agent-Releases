@@ -29,12 +29,14 @@ class PackagedUI:
 
     def connect(self, process) -> None:
         deadline = time.monotonic() + 60
+        last_observation = 'no response'
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise RuntimeError(f'{self.label} exited before UI became ready')
             try:
                 with urlopen(f'http://127.0.0.1:{self.port}/json/list', timeout=2) as response:
                     targets = json.load(response)
+                last_observation = repr([(target.get('type'), target.get('url')) for target in targets])[:1000]
                 matches = [target for target in targets if target.get('type') == 'page'
                            and 'tauri.localhost' in target.get('url', '')
                            and 'pet.html' not in target.get('url', '')]
@@ -44,10 +46,10 @@ class PackagedUI:
                     self.call('Runtime.enable')
                     self.call('Page.enable')
                     return
-            except (OSError, ValueError, websocket.WebSocketException):
-                pass
+            except (OSError, ValueError, websocket.WebSocketException) as error:
+                last_observation = f'{type(error).__name__}: {error}'[:1000]
             time.sleep(0.25)
-        raise RuntimeError(f'{self.label} packaged WebView endpoint was not ready')
+        raise RuntimeError(f'{self.label} packaged WebView endpoint was not ready: {last_observation}')
 
     def call(self, method: str, params=None):
         self.sequence += 1
