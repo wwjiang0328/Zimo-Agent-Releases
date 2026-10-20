@@ -29,8 +29,26 @@ jobs:
         with:
           python-version: '3.12'
       - name: Verify installation, upgrade and product isolation
+        if: runner.os != 'Windows'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_VERSION: ${{ inputs.version }}
           BUILD_REVISION: ${{ inputs.build_revision }}
         run: python scripts/installer-smoke.py
+      - name: Install Windows packaged UI probe dependency
+        if: runner.os == 'Windows'
+        run: python -m pip install websocket-client==1.8.0
+      - name: Verify Windows installers and actual rendered UI
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          BUILD_REVISION: ${{ inputs.build_revision }}
+        run: python scripts/installer-smoke.py
+      - name: Retain isolated packaged UI screenshots
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-ui-windows
+          path: ${{ runner.temp }}/zimo-installed-ui
+          if-no-files-found: ignore

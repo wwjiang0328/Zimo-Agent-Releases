@@ -53,13 +53,33 @@ def assert_sentinel(path):
 
 def live_processes(executables):
     processes = []
+    probes = []
     try:
-        for executable in executables:
-            processes.append(subprocess.Popen([str(executable)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        for index, executable in enumerate(executables):
+            environment = os.environ.copy()
+            if platform.system() == 'Windows':
+                import importlib.util
+                spec = importlib.util.spec_from_file_location('installed_ui', Path(__file__).with_name('installed-ui-smoke.py'))
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                probe = module.PackagedUI(('Local', 'Cloud')[index])
+                probes.append(probe)
+                environment = probe.environment()
+            processes.append(subprocess.Popen([str(executable)], env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        for probe, process in zip(probes, processes):
+            probe.connect(process)
+            try:
+                probe.exercise()
+            finally:
+                probe.capture()
+        for probe in probes:
+            probe.verify_isolation()
         time.sleep(12)
         require(all(p.poll() is None for p in processes), 'Installed desktop exited during startup')
         print('PASS: installed Local and Cloud start concurrently', flush=True)
     finally:
+        for probe in probes:
+            probe.close()
         for process in processes:
             if process.poll() is None:
                 process.terminate()

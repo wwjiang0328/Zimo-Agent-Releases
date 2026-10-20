@@ -25,6 +25,8 @@ Local 的签名、COS 上传与线上发布由私有发布控制器完成。Clou
 
 ### 恢复缺失的 macOS 安装包
 
+Windows 安装验收还通过临时 runner 的回环 WebView2 调试端点检查实际发布包：页面成功渲染、新建/切换两个会话、Local/Cloud 页面存储隔离，保留无账号测试界面截图。不向模型发请求，不以此代替真实 AI 长任务验收；调试参数仅注入临时测试进程，不写入安装包或用户设置。
+
 当已有 Windows 安装包、macOS 编译通过但 DMG 包装失败时，可运行 `Recover missing macOS installer`，传入原产品标签和已测试的完整源码 SHA。工作流不改标签，不覆盖任何现有资产，只补齐缺失的 DMG。
 
 恢复流程由 Tauri 构建并签名 `.app`，校验产品标识、版本、arm64 和签名后，使用 macOS `hdiutil` 生成包含应用与 Applications 链接的标准磁盘映像，跳过原 DMG 外观包装脚本。构建日志及源码/工作流/文件摘要记录保留为 Actions artifact。恢复完成仍须通过 `Installer acceptance`，再由发布控制器校验、签名、上传和验证公开下载；生成 GitHub 资产不代表已切换自动更新。
