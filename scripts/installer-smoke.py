@@ -51,6 +51,18 @@ def assert_sentinel(path):
     require(path.read_text(encoding='utf-8') == 'preserve this product data', f'Data changed: {path}')
 
 
+def bundled_capabilities(resources):
+    for relative in ('skills/presentation.md', 'skills/zimo-user-guide.md',
+                     'skills/document-authoring/SKILL.md', 'skills/zimo-skill-system/SKILL.md'):
+        path = resources / relative
+        require(path.is_file() and path.stat().st_size > 100, f'Missing packaged skill: {relative}')
+    entries = list((resources / 'skills').glob('*.md')) + list((resources / 'skills').glob('*/SKILL.md'))
+    require(len(entries) >= 64, f'Incomplete bundled skill catalog: {len(entries)}')
+    sidecar = 'agent-browser-win32-x64.exe' if platform.system() == 'Windows' else 'agent-browser-darwin-arm64'
+    require((resources / 'bin' / sidecar).is_file(), 'Packaged browser executable is missing')
+    print(f'PASS: packaged skill catalog ({len(entries)}) and browser executable', flush=True)
+
+
 def live_processes(executables):
     processes = []
     probes = []
@@ -120,6 +132,8 @@ def windows(root, old, local, cloud):
     assert_sentinel(local_data)
     install(cloud, cloud_dir)
     require(cloud_exe.exists(), 'Cloud install failed')
+    bundled_capabilities(local_dir)
+    bundled_capabilities(cloud_dir)
     cloud_data = sentinel(Path(os.environ['LOCALAPPDATA']) / 'com.zimo.cloud')
     local_digest, cloud_digest = digest(local_exe), digest(cloud_exe)
     live_processes([local_exe, cloud_exe])
@@ -165,6 +179,8 @@ def macos(root, old, local, cloud, version):
     (applications / 'Zimo.app').rename(root / 'previous-Zimo.app')
     local_exe = install(local, 'Zimo Local', 'com.zimo.app', version)
     cloud_exe = install(cloud, 'Zimo Cloud', 'com.zimo.cloud', version)
+    bundled_capabilities(local_exe.parent.parent / 'Resources')
+    bundled_capabilities(cloud_exe.parent.parent / 'Resources')
     cloud_data = sentinel(support / 'com.zimo.cloud')
     assert_sentinel(local_data)
     live_processes([local_exe, cloud_exe])
