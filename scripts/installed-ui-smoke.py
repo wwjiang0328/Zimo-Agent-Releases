@@ -1,14 +1,9 @@
-"""Inspect actual packaged WebView2 UIs on disposable Windows CI runners only."""
-import base64
-import json
+"""Probe packaged UIs through native accessibility on disposable Windows CI."""
 import os
 from pathlib import Path
-import socket
-import subprocess
 import time
-from urllib.request import build_opener, ProxyHandler
 
-import websocket
+from pywinauto import Application
 
 
 class PackagedUI:
@@ -17,108 +12,67 @@ class PackagedUI:
                 or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted'):
             raise RuntimeError('Packaged UI probe is restricted to disposable CI')
         self.label = label
-        with socket.socket() as listener:
-            listener.bind(('127.0.0.1', 0))
-            self.port = listener.getsockname()[1]
-        self.connection = None
-        self.sequence = 0
-        self.exceptions = []
-        self.http = build_opener(ProxyHandler({}))
+        self.window = None
+        self.expected_count = None
 
     def environment(self) -> dict[str, str]:
-        return {**os.environ, 'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS':
-                f'--remote-debugging-port={self.port} --remote-debugging-address=127.0.0.1'}
+        return os.environ.copy()
 
     def connect(self, process) -> None:
-        deadline = time.monotonic() + 60
-        last_observation = 'no response'
-        while time.monotonic() < deadline:
-            if process.poll() is not None:
-                raise RuntimeError(f'{self.label} exited before UI became ready')
-            try:
-                with self.http.open(f'http://127.0.0.1:{self.port}/json/list', timeout=2) as response:
-                    targets = json.load(response)
-                last_observation = repr([(target.get('type'), target.get('url')) for target in targets])[:1000]
-                matches = [target for target in targets if target.get('type') == 'page'
-                           and 'tauri.localhost' in target.get('url', '')
-                           and 'pet.html' not in target.get('url', '')]
-                if len(matches) == 1:
-                    self.connection = websocket.create_connection(
-                        matches[0]['webSocketDebuggerUrl'], timeout=10, suppress_origin=True)
-                    self.call('Runtime.enable')
-                    self.call('Page.enable')
-                    return
-            except (OSError, ValueError, websocket.WebSocketException) as error:
-                last_observation = f'{type(error).__name__}: {error}'[:1000]
-            time.sleep(0.25)
-        ports = subprocess.run(['netstat', '-ano'], capture_output=True, text=True, timeout=15)
-        print('\n'.join(line for line in ports.stdout.splitlines() if f':{self.port} ' in line), flush=True)
-        processes = subprocess.run(['powershell', '-NoProfile', '-Command',
-            "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress"],
-            capture_output=True, text=True, timeout=15)
-        print('CI WebView process diagnostics: ' + processes.stdout[:10000], flush=True)
-        raise RuntimeError(f'{self.label} packaged WebView endpoint was not ready: {last_observation}')
+        app = Application(backend='uia').connect(process=process.pid, timeout=30)
+        spec = app.window(title_re=f'Zimo {self.label}.*', control_type='Window')
+        spec.wait('exists visible', timeout=60)
+        self.window = spec.wrapper_object()
+        print(f'PASS: {self.label} packaged main window is visible', flush=True)
 
-    def call(self, method: str, params=None):
-        self.sequence += 1
-        request_id = self.sequence
-        self.connection.send(json.dumps({'id': request_id, 'method': method, 'params': params or {}}))
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            reply = json.loads(self.connection.recv())
-            if reply.get('method') == 'Runtime.exceptionThrown':
-                self.exceptions.append(reply['params']['exceptionDetails'].get('text', 'uncaught exception'))
-            if reply.get('id') != request_id:
-                continue
-            if 'error' in reply:
-                raise RuntimeError(f'{method}: {reply["error"]}')
-            return reply.get('result', {})
-        raise TimeoutError(f'CDP command did not settle: {method}')
-
-    def evaluate(self, expression: str):
-        result = self.call('Runtime.evaluate', {'expression': expression, 'returnByValue': True})
-        if result.get('exceptionDetails'):
-            raise RuntimeError(f'{self.label} UI evaluation failed')
-        return result.get('result', {}).get('value')
-
-    def wait_for(self, expression: str) -> None:
+    def wait_for(self, predicate, description: str):
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
-            if self.evaluate(expression):
-                return
-            time.sleep(0.1)
-        raise RuntimeError(f'{self.label} packaged UI expectation timed out: {expression}')
+            value = predicate()
+            if value:
+                return value
+            time.sleep(0.2)
+        raise RuntimeError(f'{self.label}: {description}')
+
+    def buttons(self, name: str):
+        return [control for control in self.window.descendants(control_type='Button')
+                if control.window_text() == name and control.is_visible()]
+
+    def conversations(self):
+        return [control for control in self.window.descendants(control_type='Button')
+                if control.window_text().startswith('新会话 ') and control.is_visible()]
 
     def exercise(self) -> None:
-        self.wait_for("document.querySelector('#root')?.childElementCount > 0 && document.querySelector('button[aria-label=\"新建会话\"]') !== null")
-        self.evaluate("document.querySelector('[aria-label=\"跳过启动视频\"]')?.click()")
-        self.wait_for("document.querySelector('.zimo-startup-intro') === null")
-        if not self.evaluate("document.body.innerText.includes(" + json.dumps('Zimo ' + self.label)
-                             + ") && document.body.innerText.includes(" + json.dumps(os.environ['RELEASE_VERSION'])
-                             + ") && typeof window.__TAURI_INTERNALS__?.invoke === 'function'"):
-            raise RuntimeError(f'{self.label} packaged page is empty or incorrectly branded')
-        count = self.evaluate("document.querySelectorAll('.sidebar-conversation-item').length")
-        for expected_count in (count + 1, count + 2):
-            self.evaluate("document.querySelector('button[aria-label=\"新建会话\"]').click()")
-            self.wait_for(f"document.querySelectorAll('.sidebar-conversation-item').length === {expected_count}")
-        self.evaluate("window.__probeTarget = document.querySelector('.sidebar-conversation-item:not(.is-active)'); window.__probeTarget.click()")
-        self.wait_for("window.__probeTarget.matches('.is-active') && document.querySelectorAll('.sidebar-conversation-item.is-active').length === 1")
-        self.evaluate("localStorage.setItem('__zimo_installer_probe', " + json.dumps(self.label) + ")")
-        if self.exceptions:
-            raise RuntimeError(f'{self.label} uncaught renderer exceptions: {self.exceptions}')
-        print(f'PASS: {self.label} packaged UI rendered and two conversations were created/switched', flush=True)
+        self.wait_for(lambda: self.buttons('新建会话'), 'new conversation button did not render')
+        skip = self.buttons('跳过启动视频')
+        if skip:
+            skip[0].invoke()
+            self.wait_for(lambda: not self.buttons('跳过启动视频'), 'startup video did not close')
+        names = [control.window_text() for control in self.window.descendants()]
+        if not any('Zimo ' + self.label in name for name in names):
+            raise RuntimeError(f'{self.label}: missing product identity in rendered UI')
+        if not any(os.environ['RELEASE_VERSION'] in name for name in names):
+            raise RuntimeError(f'{self.label}: missing version in rendered UI')
+        count = len(self.conversations())
+        for expected in range(count + 1, count + (4 if self.label == 'Local' else 3)):
+            self.buttons('新建会话')[0].invoke()
+            self.wait_for(lambda: len(self.conversations()) == expected, 'conversation creation did not settle')
+        self.expected_count = len(self.conversations())
+        target = self.conversations()[0]
+        target.invoke()
+        self.wait_for(lambda: 'current=page' in target.element_info.element.CurrentAriaProperties,
+                      'selected conversation did not become current')
+        print(f'PASS: {self.label} packaged UI rendered and conversations were created/switched', flush=True)
 
     def verify_isolation(self) -> None:
-        if self.evaluate("localStorage.getItem('__zimo_installer_probe')") != self.label:
-            raise RuntimeError(f'{self.label} renderer storage is not isolated')
+        if len(self.conversations()) != self.expected_count:
+            raise RuntimeError(f'{self.label}: other product changed conversation list')
 
     def close(self) -> None:
-        if self.connection:
-            self.connection.close()
+        pass
 
     def capture(self) -> None:
-        if self.connection:
+        if self.window:
             output = Path(os.environ['RUNNER_TEMP']) / 'zimo-installed-ui'
             output.mkdir(exist_ok=True)
-            screenshot = self.call('Page.captureScreenshot', {'format': 'png'})
-            (output / f'{self.label}.png').write_bytes(base64.b64decode(screenshot['data']))
+            self.window.capture_as_image().save(output / f'{self.label}.png')

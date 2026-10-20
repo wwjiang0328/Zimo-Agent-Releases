@@ -37,7 +37,7 @@ jobs:
         run: python scripts/installer-smoke.py
       - name: Install Windows packaged UI probe dependency
         if: runner.os == 'Windows'
-        run: python -m pip install websocket-client==1.8.0
+        run: python -m pip install pywinauto==0.6.9 pillow==11.3.0
       - name: Verify Windows installers and actual rendered UI
         if: runner.os == 'Windows'
         env:
